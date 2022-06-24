@@ -22,7 +22,7 @@ $ make run
 ....................
 ```
 
-have fun!
+try and beat my record (44) and have fun!
 
 ## keybindings
 
