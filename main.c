@@ -93,7 +93,8 @@ void display(Game game) {
     }
 }
 
-void control(Game *game) {
+void *control(void *p) {
+    Game* game = (Game *) p;
     char c;
     while (read(STDIN_FILENO, &c, 1) && c != 'q') {
         switch (c) {
@@ -118,10 +119,6 @@ void control(Game *game) {
     }
 
     game->quit = true;
-}
-
-void *f(void *p) {
-    control((Game *)p);
 
     return NULL;
 }
@@ -170,7 +167,7 @@ int main(void) {
 
     pthread_t thread;
 
-    assert(pthread_create(&thread, NULL, f, (void *)&game) == 0);
+    assert(pthread_create(&thread, NULL, control, (void *)&game) == 0);
 
     spawn_food(&game);
 
