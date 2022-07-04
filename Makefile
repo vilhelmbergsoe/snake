@@ -1,5 +1,4 @@
-CC=cc
-CFLAGS=-Wall -Werror -Wextra -pthread
+CFLAGS=-Wall -Werror -Wextra -pthread -O2
 
 all:
 	$(CC) $(CFLAGS) -o snake main.c
