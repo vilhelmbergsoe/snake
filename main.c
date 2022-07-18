@@ -31,7 +31,7 @@ typedef struct {
     Dir direction;
     Dir last_direction;
 
-    Point* tail;
+    Point tail[MAX_LENGTH];
 } Player;
 
 typedef struct {
@@ -149,6 +149,20 @@ void append_shift_right(Point* arr, int size, Point elem) {
     arr[0] = elem;
 }
 
+bool check_loss(Game game) {
+   return game.player.position.x < 0 ||
+          game.player.position.x > GRID_WIDTH-1 ||
+          game.player.position.y < 0 ||
+          game.player.position.y > GRID_HEIGHT-1 ||
+          istail(game, game.player.position.x, game.player.position.y);
+}
+
+bool check_win(Game game) {
+    return game.player.position.x == game.food.x &&
+        game.player.position.y == game.food.y &&
+        game.score == MAX_LENGTH-2;
+}
+
 int main(void) {
     enable_raw_mode();
 
@@ -159,7 +173,7 @@ int main(void) {
         .player.position.x = GRID_WIDTH/2,
         .player.position.y = GRID_HEIGHT/2,
         .player.direction = DIR_RIGHT,
-        .player.tail = calloc(MAX_LENGTH, sizeof(Point)),
+        .player.tail = {},
         .score = 0,
         .paused = true,
         .quit = false,
@@ -195,14 +209,18 @@ int main(void) {
             }
             game.player.last_direction = game.player.direction;
 
-            if (game.player.position.x < 0 || game.player.position.x > GRID_WIDTH-1 || game.player.position.y < 0 || game.player.position.y > GRID_HEIGHT-1 || istail(game, game.player.position.x, game.player.position.y)) {
+            if (check_loss(game)) {
                 game.quit = true;
                 printf("gameover!\r\nyour score was %d\r\npress 'q' to quit\r\n", game.score);
-            } else if (game.player.position.x == game.food.x && game.player.position.y == game.food.y && game.score == MAX_LENGTH-2) {
+            } else if (check_win(game)) {
                 game.quit = true;
                 printf("you won!\r\nyour score was %d\r\npress 'q' to quit\r\n", game.score);
             } else {
-                append_shift_right(game.player.tail, MAX_LENGTH, (Point) {.active = true, .x = game.player.position.x, .y = game.player.position.y});
+                append_shift_right(game.player.tail, MAX_LENGTH, (Point) {
+                                   .active = true,
+                                   .x = game.player.position.x,
+                                   .y = game.player.position.y
+                });
                 if (game.player.position.x == game.food.x && game.player.position.y == game.food.y) {
                     game.score++;
                     spawn_food(&game);
@@ -215,8 +233,6 @@ int main(void) {
     }
 
     pthread_join(thread, NULL);
-
-    free(game.player.tail);
 
     return 0;
 }
