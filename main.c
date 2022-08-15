@@ -1,238 +1,256 @@
+#include <assert.h>
 #include <ctype.h>
+#include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <pthread.h>
-#include <stdbool.h>
 #include <time.h>
-#include <assert.h>
+#include <unistd.h>
 
 #define GRID_HEIGHT 10
 #define GRID_WIDTH 20
-#define MAX_LENGTH GRID_WIDTH*GRID_HEIGHT
+#define MAX_LENGTH GRID_WIDTH * GRID_HEIGHT
+#define WRAP true
 
-typedef enum {
-    DIR_UP,
-    DIR_DOWN,
-    DIR_LEFT,
-    DIR_RIGHT
-} Dir;
+typedef enum { DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT } Dir;
 
 typedef struct {
-    bool active;
-    int x;
-    int y;
+  bool active;
+  int x;
+  int y;
 } Point;
 
 typedef struct {
-    Point position;
-    Dir direction;
-    Dir last_direction;
+  Point position;
+  Dir direction;
+  Dir last_direction;
 
-    Point tail[MAX_LENGTH];
+  Point tail[MAX_LENGTH];
 } Player;
 
 typedef struct {
-    Player player;
-    Point food;
+  Player player;
+  Point food;
 
-    int score;
-    bool paused;
-    bool quit;
+  int score;
+  bool paused;
+  bool quit;
 } Game;
 
-void reset_cursor() {
-    printf("\033[%dA\033[%dD", GRID_HEIGHT+1, GRID_WIDTH);
-}
+void reset_cursor() { printf("\033[%dA\033[%dD", GRID_HEIGHT + 1, GRID_WIDTH); }
 
 struct termios orig_termios;
 
-void disable_raw_mode() {
-   tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
-}
+void disable_raw_mode() { tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios); }
 
 void enable_raw_mode() {
-    tcgetattr(STDIN_FILENO, &orig_termios);
-    atexit(disable_raw_mode);
+  tcgetattr(STDIN_FILENO, &orig_termios);
+  atexit(disable_raw_mode);
 
-    struct termios raw = orig_termios;
-    raw.c_iflag &= ~(ICRNL | IXON);
-    raw.c_oflag &= ~(OPOST);
-    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+  struct termios raw = orig_termios;
+  raw.c_iflag &= ~(ICRNL | IXON);
+  raw.c_oflag &= ~(OPOST);
+  raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
 
 bool istail(Game game, int x, int y) {
-    int i;
-    for (i = 0; i <= game.score; i++) {
-        if (game.player.tail[i].x == x && game.player.tail[i].y == y && game.player.tail[i].active == true) return true;
-    }
-    return false;
+  int i;
+  for (i = 0; i <= game.score; i++) {
+    if (game.player.tail[i].x == x && game.player.tail[i].y == y &&
+        game.player.tail[i].active == true)
+      return true;
+  }
+  return false;
 }
 
 void display(Game game) {
-    int x, y;
+  int x, y;
 
-    printf("[score]: %d %s\r\n", game.score, game.paused ? "(paused)" : "        ");
-    for (y = 0; y < GRID_HEIGHT; y++) {
-        for (x = 0; x < GRID_WIDTH; x++) {
-            if (game.player.position.x == x && game.player.position.y == y) {
-                putc('#', stdout);
-            } else if (game.food.x == x && game.food.y == y) {
-                putc('@', stdout);
-            } else if (istail(game, x, y)) {
-                putc('*', stdout);
-            } else {
-                putc('.', stdout);
-            }
-        }
-        printf("\r\n");
+  printf("[score]: %d %s\r\n", game.score,
+         game.paused ? "(paused)" : "        ");
+  for (y = 0; y < GRID_HEIGHT; y++) {
+    for (x = 0; x < GRID_WIDTH; x++) {
+      if (game.player.position.x == x && game.player.position.y == y) {
+        putc('#', stdout);
+      } else if (game.food.x == x && game.food.y == y) {
+        putc('@', stdout);
+      } else if (istail(game, x, y)) {
+        putc('*', stdout);
+      } else {
+        putc('.', stdout);
+      }
     }
+    printf("\r\n");
+  }
 }
 
 void *control(void *p) {
-    Game* game = (Game *) p;
-    char c;
-    while (read(STDIN_FILENO, &c, 1) && c != 'q') {
-        switch (c) {
-            case 'w':
-                if (game->player.last_direction != DIR_DOWN) game->player.direction = DIR_UP;
-                break;
-            case 'a':
-                if (game->player.last_direction != DIR_RIGHT) game->player.direction = DIR_LEFT;
-                break;
-            case 's':
-                if (game->player.last_direction != DIR_UP) game->player.direction = DIR_DOWN;
-                break;
-            case 'd':
-                if (game->player.last_direction != DIR_LEFT) game->player.direction = DIR_RIGHT;
-                break;
-            case 'p':
-                game->paused = !game->paused;
-                break;
-            default: {};
-        }
-
+  Game *game = (Game *)p;
+  char c;
+  while (read(STDIN_FILENO, &c, 1) && c != 'q') {
+    switch (c) {
+    case 'w':
+      if (game->player.last_direction != DIR_DOWN)
+        game->player.direction = DIR_UP;
+      break;
+    case 'a':
+      if (game->player.last_direction != DIR_RIGHT)
+        game->player.direction = DIR_LEFT;
+      break;
+    case 's':
+      if (game->player.last_direction != DIR_UP)
+        game->player.direction = DIR_DOWN;
+      break;
+    case 'd':
+      if (game->player.last_direction != DIR_LEFT)
+        game->player.direction = DIR_RIGHT;
+      break;
+    case 'p':
+      game->paused = !game->paused;
+      break;
+    default: {
+    };
     }
+  }
 
-    game->quit = true;
+  game->quit = true;
 
-    return NULL;
+  return NULL;
 }
 
 int randnum(int lower, int upper) {
-    return (rand() % (upper - lower + 1)) + lower;
+  return (rand() % (upper - lower + 1)) + lower;
 }
 
-void spawn_food(Game* game) {
-    int x = randnum(0, GRID_WIDTH-1);
-    int y = randnum(0, GRID_HEIGHT-1);
+void spawn_food(Game *game) {
+  int x = randnum(0, GRID_WIDTH - 1);
+  int y = randnum(0, GRID_HEIGHT - 1);
 
-    if (!(istail(*game, x, y) || (game->player.position.x == x && game->player.position.y == y))) {
-        game->food.x = x;
-        game->food.y = y;
-    } else {
-        spawn_food(game);
-    }
+  if (!(istail(*game, x, y) ||
+        (game->player.position.x == x && game->player.position.y == y))) {
+    game->food.x = x;
+    game->food.y = y;
+  } else {
+    spawn_food(game);
+  }
 }
 
-void append_shift_right(Point* arr, int size, Point elem) {
-    int i;
-    for (i = size-1; i > 0; i--) {
-        if (!i-1 < 0) {
-            arr[i] = arr[i-1];
-        }
+void append_shift_right(Point *arr, int size, Point elem) {
+  int i;
+  for (i = size - 1; i > 0; i--) {
+    if (!i - 1 < 0) {
+      arr[i] = arr[i - 1];
     }
-    arr[0] = elem;
+  }
+  arr[0] = elem;
 }
 
 bool check_loss(Game game) {
-   return game.player.position.x < 0 ||
-          game.player.position.x > GRID_WIDTH-1 ||
-          game.player.position.y < 0 ||
-          game.player.position.y > GRID_HEIGHT-1 ||
-          istail(game, game.player.position.x, game.player.position.y);
+  if (WRAP)
+    return istail(game, game.player.position.x, game.player.position.y);
+
+  return game.player.position.x < 0 ||
+         game.player.position.x > GRID_WIDTH - 1 ||
+         game.player.position.y < 0 ||
+         game.player.position.y > GRID_HEIGHT - 1 ||
+         istail(game, game.player.position.x, game.player.position.y);
 }
 
 bool check_win(Game game) {
-    return game.player.position.x == game.food.x &&
-        game.player.position.y == game.food.y &&
-        game.score == MAX_LENGTH-2;
+  return game.player.position.x == game.food.x &&
+         game.player.position.y == game.food.y && game.score == MAX_LENGTH - 2;
+}
+
+void wrap(Game *game) {
+  if (game->player.position.y < 0)
+    game->player.position.y = GRID_HEIGHT - 1;
+  if (game->player.position.y > GRID_HEIGHT - 1)
+    game->player.position.y = 0;
+  if (game->player.position.x < 0)
+    game->player.position.x = GRID_WIDTH - 1;
+  if (game->player.position.x > GRID_WIDTH - 1)
+    game->player.position.x = 0;
 }
 
 int main(void) {
-    enable_raw_mode();
+  enable_raw_mode();
 
-    srand(time(0));
+  srand(time(0));
 
-    Game game = {
-        .player.position.active = true,
-        .player.position.x = GRID_WIDTH/2,
-        .player.position.y = GRID_HEIGHT/2,
-        .player.direction = DIR_RIGHT,
-        .player.tail = {},
-        .score = 0,
-        .paused = true,
-        .quit = false,
-    };
+  Game game = {
+      .player.position.active = true,
+      .player.position.x = GRID_WIDTH / 2,
+      .player.position.y = GRID_HEIGHT / 2,
+      .player.direction = DIR_RIGHT,
+      .player.tail = {},
+      .score = 0,
+      .paused = true,
+      .quit = false,
+  };
 
-    pthread_t thread;
+  pthread_t thread;
 
-    assert(pthread_create(&thread, NULL, control, (void *)&game) == 0);
+  assert(pthread_create(&thread, NULL, control, (void *)&game) == 0);
 
-    spawn_food(&game);
+  spawn_food(&game);
 
-    display(game);
+  display(game);
 
-    while (!game.quit) {
-        if (game.paused) {
-            reset_cursor();
-            display(game);
-        } else {
-            switch (game.player.direction) {
-                case DIR_UP:
-                    game.player.position.y -= 1;
-                    break;
-                case DIR_LEFT:
-                    game.player.position.x -= 1;
-                    break;
-                case DIR_DOWN:
-                    game.player.position.y += 1;
-                    break;
-                case DIR_RIGHT:
-                    game.player.position.x += 1;
-                    break;
-                default: {};
-            }
-            game.player.last_direction = game.player.direction;
+  while (!game.quit) {
+    if (game.paused) {
+      reset_cursor();
+      display(game);
+    } else {
+      switch (game.player.direction) {
+      case DIR_UP:
+        game.player.position.y -= 1;
+        break;
+      case DIR_LEFT:
+        game.player.position.x -= 1;
+        break;
+      case DIR_DOWN:
+        game.player.position.y += 1;
+        break;
+      case DIR_RIGHT:
+        game.player.position.x += 1;
+        break;
+      default: {
+      };
+      }
+      game.player.last_direction = game.player.direction;
 
-            if (check_loss(game)) {
-                game.quit = true;
-                printf("gameover!\r\nyour score was %d\r\npress 'q' to quit\r\n", game.score);
-            } else if (check_win(game)) {
-                game.quit = true;
-                printf("you won!\r\nyour score was %d\r\npress 'q' to quit\r\n", game.score);
-            } else {
-                append_shift_right(game.player.tail, MAX_LENGTH, (Point) {
-                                   .active = true,
+      if (WRAP)
+        wrap(&game);
+
+      if (check_loss(game)) {
+        game.quit = true;
+        printf("gameover!\r\nyour score was %d\r\npress 'q' to quit\r\n",
+               game.score);
+      } else if (check_win(game)) {
+        game.quit = true;
+        printf("you won!\r\nyour score was %d\r\npress 'q' to quit\r\n",
+               game.score);
+      } else {
+        append_shift_right(game.player.tail, MAX_LENGTH,
+                           (Point){.active = true,
                                    .x = game.player.position.x,
-                                   .y = game.player.position.y
-                });
-                if (game.player.position.x == game.food.x && game.player.position.y == game.food.y) {
-                    game.score++;
-                    spawn_food(&game);
-                }
-                reset_cursor();
-                display(game);
-            };
+                                   .y = game.player.position.y});
+        if (game.player.position.x == game.food.x &&
+            game.player.position.y == game.food.y) {
+          game.score++;
+          spawn_food(&game);
         }
-        usleep(200 * 1000);
+        reset_cursor();
+        display(game);
+      };
     }
+    usleep(200 * 1000);
+  }
 
-    pthread_join(thread, NULL);
+  pthread_join(thread, NULL);
 
-    return 0;
+  return 0;
 }
